@@ -1,0 +1,613 @@
+### data load and pre-process
+```{r}
+library(tidyverse)
+library(survival)
+library(regclass)
+library(car)
+
+data_project_outcome = read_csv('./data/project_outcome_com_Python_year_censor_2022_year_before_2022.csv')
+data_pair_outcome = read_csv('./data/project_atypical_combination_com_Python_year_censor_2022_year_before_2022_restrict_reshuffle_woc_pk_threshold_100.csv')
+data_star = read_csv('./data/project_outcome_star_com_Python_year_censor_2022_year_before_2022.csv')
+
+data_merge = merge(data_pair_outcome, data_project_outcome , by = 'woc')
+data_merge = merge(data_merge, data_star, by = 'woc')
+data_merge$time_to_accumulate_stars = data_merge$project_age - data_merge$dif_gh_create_earliest_commit
+
+data_merge = subset(data_merge, dif_gh_create_earliest_commit >= -1 & woc_repo_align_flag == TRUE & time_to_accumulate_stars >= 0)
+data_merge$earliestcommit = as.factor(data_merge$earliest_commit_year)
+
+
+data_project_download = read_csv('./data/project_outcome_download_com_Python_year_censor_2022_year_before_2022.csv')
+
+data_merge_has_download = merge(data_merge, data_project_download, by = 'woc')
+data_merge_has_download$time_to_accumulate_downloads = data_merge_has_download$project_age - data_merge_has_download$first_release_first_commit_dif
+data_merge_has_download_valid = subset(data_merge_has_download, first_release_year_month >= '2016-05' & first_release_first_commit_dif >= 0 & time_to_accumulate_downloads >= 0)
+
+
+pk_threshold = 2
+
+data_merge_before = subset(data_merge, star_before_count < exp(10) & identified_pk_count >= pk_threshold)
+data_merge_before$mean_conventionality_woc = data_merge_before$woc_conventionality
+data_merge_before$pk_count = data_merge_before$identified_pk_count
+data_merge_before$commit_count = data_merge_before$all_past_commit_count
+data_merge_before$star_count = data_merge_before$star_before_count
+data_merge_before$dev_count = data_merge_before$all_dev_alltime_count
+
+
+data_merge_five_year = subset(data_merge, project_age >= 365 * 5)
+data_merge_four_year = subset(data_merge, project_age >= 365 * 4)
+data_merge_three_year = subset(data_merge, project_age >= 365 * 3)
+data_merge_two_year = subset(data_merge, project_age >= 365 * 2)
+data_merge_one_year = subset(data_merge, project_age >= 365 * 1)
+
+summary(data_merge_has_download_valid$time_to_accumulate_downloads >= 0)
+data_merge_has_download_one_year_valid = subset(data_merge_has_download_valid, project_age >= 365)
+data_merge_has_download_two_year_valid = subset(data_merge_has_download_valid, project_age >= 2 * 365)
+data_merge_has_download_three_year_valid = subset(data_merge_has_download_valid, project_age >= 3 * 365)
+data_merge_has_download_four_year_valid = subset(data_merge_has_download_valid, project_age >= 4 * 365)
+
+data_merge_has_download_five_year_valid = subset(data_merge_has_download_valid, project_age >= 5 * 365)
+data_merge_five_year_no_outlier = subset(data_merge_five_year, project_age < exp(9)
+                                                                          & star_within_5_year < exp(10)
+                                                                          &  all_commit_within_5_year_count < exp(10)
+                                                                          & all_commit_within_5_year_count > exp(2)
+                                                                          & all_dev_within_5_year_count < exp(6)
+                                                                          & identified_pk_within_5_year < exp(5)
+                                                                          & identified_pk_within_5_year >= pk_threshold
+                                                                          )
+data_merge_five_year_no_outlier$mean_conventionality_woc = data_merge_five_year_no_outlier$mean_pair_pk_conventionality_woc_within_5_year
+data_merge_five_year_no_outlier$commit_per_dev = data_merge_five_year_no_outlier$all_commit_within_5_year_count / data_merge_five_year_no_outlier$all_dev_within_5_year_count
+
+
+
+
+data_merge_five_year_no_outlier$pk_count = data_merge_five_year_no_outlier$identified_pk_within_5_year
+data_merge_five_year_no_outlier$commit_count = data_merge_five_year_no_outlier$all_commit_within_5_year_count
+data_merge_five_year_no_outlier$star_count = data_merge_five_year_no_outlier$star_within_5_year
+data_merge_five_year_no_outlier$dev_count = data_merge_five_year_no_outlier$all_dev_within_5_year_count
+
+
+data_merge_four_year_no_outlier = subset(data_merge_five_year, project_age < exp(9)
+                                                                          & star_within_4_year < exp(10)
+                                                                          &  all_commit_within_4_year_count < exp(10)
+                                                                          & all_commit_within_4_year_count > exp(2)
+                                                                          & all_dev_within_4_year_count < exp(6)
+                                                                          & identified_pk_within_4_year < exp(5)
+                                                                          & identified_pk_within_4_year >= pk_threshold
+                                                                          )
+
+data_merge_four_year_no_outlier$pk_count = data_merge_four_year_no_outlier$identified_pk_within_4_year
+data_merge_four_year_no_outlier$mean_conventionality_woc = data_merge_four_year_no_outlier$mean_pair_pk_conventionality_woc_within_4_year
+data_merge_four_year_no_outlier$commit_count = data_merge_four_year_no_outlier$all_commit_within_4_year_count
+data_merge_four_year_no_outlier$star_count = data_merge_four_year_no_outlier$star_within_4_year
+data_merge_four_year_no_outlier$dev_count = data_merge_four_year_no_outlier$all_dev_within_4_year_count
+
+
+
+
+data_merge_three_year_no_outlier = subset(data_merge_three_year, project_age < exp(9)
+                                                                          & star_within_3_year < exp(9)
+                                                                          & all_commit_within_3_year_count < exp(10)
+                                                                          & all_commit_within_3_year_count > exp(2)
+                                                                          & all_dev_within_3_year_count < exp(6)
+                                                                          & identified_pk_within_3_year < exp(5)
+                                                                          & identified_pk_pair_count_woc_within_3_year >= pk_threshold
+                                          )
+
+
+data_merge_three_year_no_outlier$pk_count = data_merge_three_year_no_outlier$identified_pk_within_3_year
+data_merge_three_year_no_outlier$mean_conventionality_woc = data_merge_three_year_no_outlier$mean_pair_pk_conventionality_woc_within_3_year
+data_merge_three_year_no_outlier$commit_count = data_merge_three_year_no_outlier$all_commit_within_3_year_count
+data_merge_three_year_no_outlier$star_count = data_merge_three_year_no_outlier$star_within_3_year
+data_merge_three_year_no_outlier$dev_count = data_merge_three_year_no_outlier$all_dev_within_3_year_count
+
+
+data_merge_two_year_no_outlier = subset(data_merge_five_year, project_age < exp(9)
+                                                                          & star_within_2_year < exp(9)
+                                                                          &  all_commit_within_2_year_count < exp(10)
+                                                                          & all_commit_within_2_year_count > exp(2)
+                                                                          & all_dev_within_2_year_count < exp(6)
+                                                                          & identified_pk_within_2_year < exp(5)
+                                                                          & identified_pk_within_2_year >= pk_threshold
+                                                                          )
+
+data_merge_two_year_no_outlier$pk_count = data_merge_two_year_no_outlier$identified_pk_within_2_year
+data_merge_two_year_no_outlier$mean_conventionality_woc = data_merge_two_year_no_outlier$mean_pair_pk_conventionality_woc_within_2_year
+data_merge_two_year_no_outlier$pair_pk_woc = data_merge_two_year_no_outlier$identified_pk_pair_count_woc_within_2_year
+data_merge_two_year_no_outlier$commit_count = data_merge_two_year_no_outlier$all_commit_within_2_year_count
+data_merge_two_year_no_outlier$star_count = data_merge_two_year_no_outlier$star_within_2_year
+data_merge_two_year_no_outlier$dev_count = data_merge_two_year_no_outlier$all_dev_within_2_year_count
+
+
+data_merge_one_year_no_outlier = subset(data_merge_one_year, project_age < exp(9)
+                                                                          & star_within_1_year < exp(8)
+                                                                          &  all_commit_within_1_year_count < exp(9)
+                                                                          & all_commit_within_1_year_count > exp(1)
+                                                                          & all_dev_within_1_year_count < exp(4)
+                                                                          & identified_pk_within_1_year < exp(4)
+                                                                          & identified_pk_within_1_year >= pk_threshold
+                                        )
+data_merge_one_year_no_outlier$pk_count = data_merge_one_year_no_outlier$identified_pk_within_1_year
+data_merge_one_year_no_outlier$mean_conventionality_woc = data_merge_one_year_no_outlier$mean_pair_pk_conventionality_woc_within_1_year
+data_merge_one_year_no_outlier$commit_count = data_merge_one_year_no_outlier$all_commit_within_1_year_count
+data_merge_one_year_no_outlier$star_count = data_merge_one_year_no_outlier$star_within_1_year
+data_merge_one_year_no_outlier$dev_count = data_merge_one_year_no_outlier$all_dev_within_1_year_count
+
+data_merge_has_download_one_year_valid_no_outlier = subset(data_merge_has_download_one_year_valid, 
+                                                                          star_within_1_year < exp(8)
+                                                                        & all_dev_within_1_year_count < exp(3.5)
+                                                                        & identified_pk_within_1_year >= pk_threshold)
+
+data_merge_has_download_one_year_valid_no_outlier$mean_conventionality_woc = data_merge_has_download_one_year_valid_no_outlier$mean_pair_pk_conventionality_woc_within_1_year
+data_merge_has_download_one_year_valid_no_outlier$pk_count = data_merge_has_download_one_year_valid_no_outlier$identified_pk_within_1_year
+data_merge_has_download_one_year_valid_no_outlier$commit_count = data_merge_has_download_one_year_valid_no_outlier$all_commit_within_1_year_count
+data_merge_has_download_one_year_valid_no_outlier$star_count = data_merge_has_download_one_year_valid_no_outlier$star_within_1_year
+data_merge_has_download_one_year_valid_no_outlier$dev_count = data_merge_has_download_one_year_valid_no_outlier$all_dev_within_1_year_count
+data_merge_has_download_one_year_valid_no_outlier$download_others = data_merge_has_download_one_year_valid_no_outlier$download_within_1_year_from_others
+
+
+
+
+data_merge_has_download_two_year_valid_no_outlier = subset(data_merge_has_download_two_year_valid,
+                                                  identified_pk_within_2_year >= pk_threshold
+                                                  )
+
+data_merge_has_download_two_year_valid_no_outlier$pk_count = data_merge_has_download_two_year_valid_no_outlier$identified_pk_within_2_year
+
+
+data_merge_has_download_two_year_valid_no_outlier$mean_conventionality_woc = data_merge_has_download_two_year_valid_no_outlier$mean_pair_pk_conventionality_woc_within_2_year
+
+
+data_merge_has_download_two_year_valid_no_outlier$commit_count = data_merge_has_download_two_year_valid_no_outlier$all_commit_within_2_year_count
+data_merge_has_download_two_year_valid_no_outlier$star_count = data_merge_has_download_two_year_valid_no_outlier$star_within_2_year
+data_merge_has_download_two_year_valid_no_outlier$dev_count = data_merge_has_download_two_year_valid_no_outlier$all_dev_within_2_year_count
+data_merge_has_download_two_year_valid_no_outlier$download_others = data_merge_has_download_two_year_valid_no_outlier$download_within_2_year_from_others
+
+
+
+data_merge_has_download_three_year_valid_no_outlier = subset(data_merge_has_download_three_year_valid,
+                                                  all_commit_within_3_year_count < exp(9) & all_commit_within_3_year_count > exp(2)
+                                                  & identified_pk_within_3_year >= pk_threshold
+                                                  )
+
+data_merge_has_download_three_year_valid_no_outlier$pk_count = data_merge_has_download_three_year_valid_no_outlier$identified_pk_within_3_year
+
+
+data_merge_has_download_three_year_valid_no_outlier$mean_conventionality_woc = data_merge_has_download_three_year_valid_no_outlier$mean_pair_pk_conventionality_woc_within_3_year
+
+
+data_merge_has_download_three_year_valid_no_outlier$commit_count = data_merge_has_download_three_year_valid_no_outlier$all_commit_within_3_year_count
+data_merge_has_download_three_year_valid_no_outlier$star_count = data_merge_has_download_three_year_valid_no_outlier$star_within_3_year
+data_merge_has_download_three_year_valid_no_outlier$dev_count = data_merge_has_download_three_year_valid_no_outlier$all_dev_within_3_year_count
+data_merge_has_download_three_year_valid_no_outlier$download_others = data_merge_has_download_three_year_valid_no_outlier$download_within_3_year_from_others
+
+
+data_merge_has_download_four_year_valid_no_outlier = subset(data_merge_has_download_four_year_valid,
+                                                  identified_pk_within_4_year >= pk_threshold
+                                                  & all_commit_within_4_year_count < exp(10)
+                                                  )
+
+data_merge_has_download_four_year_valid_no_outlier$pk_count = data_merge_has_download_four_year_valid_no_outlier$identified_pk_within_4_year
+
+
+data_merge_has_download_four_year_valid_no_outlier$mean_conventionality_woc = data_merge_has_download_four_year_valid_no_outlier$mean_pair_pk_conventionality_woc_within_4_year
+
+
+data_merge_has_download_four_year_valid_no_outlier$commit_count = data_merge_has_download_four_year_valid_no_outlier$all_commit_within_4_year_count
+data_merge_has_download_four_year_valid_no_outlier$star_count = data_merge_has_download_four_year_valid_no_outlier$star_within_4_year
+data_merge_has_download_four_year_valid_no_outlier$dev_count = data_merge_has_download_four_year_valid_no_outlier$all_dev_within_4_year_count
+data_merge_has_download_four_year_valid_no_outlier$download_others = data_merge_has_download_four_year_valid_no_outlier$download_within_4_year_from_others
+
+
+data_merge_has_download_five_year_valid_no_outlier = subset(data_merge_has_download_five_year_valid,
+                                                  identified_pk_within_5_year >= pk_threshold
+                                                  & all_commit_within_5_year_count < exp(10)
+                                                  )
+
+data_merge_has_download_five_year_valid_no_outlier$pk_count = data_merge_has_download_five_year_valid_no_outlier$identified_pk_within_5_year
+data_merge_has_download_five_year_valid_no_outlier$mean_conventionality_woc = data_merge_has_download_five_year_valid_no_outlier$mean_pair_pk_conventionality_woc_within_5_year
+data_merge_has_download_five_year_valid_no_outlier$commit_count = data_merge_has_download_five_year_valid_no_outlier$all_commit_within_5_year_count
+data_merge_has_download_five_year_valid_no_outlier$star_count = data_merge_has_download_five_year_valid_no_outlier$star_within_5_year
+data_merge_has_download_five_year_valid_no_outlier$dev_count = data_merge_has_download_five_year_valid_no_outlier$all_dev_within_5_year_count
+data_merge_has_download_five_year_valid_no_outlier$download_others = data_merge_has_download_five_year_valid_no_outlier$download_within_5_year_from_others
+
+```
+
+
+### regression, generate Table 3 in the paper
+```{r}
+
+model_star_five_year = lm(log(star_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                        
+
+                                            + log(dev_count + 1)
+                           
+
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_stars + 1)
+
+                                            + earliestcommit
+                        ,data = data_merge_five_year_no_outlier)
+vif(model_star_five_year)
+summary(model_star_five_year)
+Anova(model_star_five_year)
+summary( scale(data_merge_five_year_no_outlier$mean_conventionality_woc))
+summary(data_merge_five_year_no_outlier$dev_count)
+
+
+model_star_four_year = lm(log(star_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+
+
+                                            + log(dev_count + 1)
+
+
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_stars + 1)
+
+                                            + earliestcommit
+                        ,data = data_merge_four_year_no_outlier)
+vif(model_star_four_year)
+summary(model_star_four_year)
+Anova(model_star_four_year)
+
+
+
+model_star_three_year = lm(log(star_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                        
+                        
+                                            + log(dev_count + 1)
+                           
+
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_stars + 1)
+
+                                            + earliestcommit
+                        ,data = data_merge_three_year_no_outlier)
+vif(model_star_three_year)
+summary(model_star_three_year)
+
+
+model_star_two_year = lm(log(star_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                        
+                        
+                                            + log(dev_count + 1)
+                           
+
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_stars + 1)
+
+                                            + earliestcommit
+
+                        ,data = data_merge_two_year_no_outlier)
+vif(model_star_two_year)
+summary(model_star_two_year)
+Anova(model_star_two_year)
+
+model_star_one_year = lm(log(star_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+                                            + log(dev_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_stars + 1)
+
+                                            + earliestcommit
+                        ,data = data_merge_one_year_no_outlier)
+vif(model_star_one_year)
+summary(model_star_one_year)
+
+
+
+model_download_one_year = lm(log(download_others + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                        
+                                            + log(dev_count + 1)
+                                            
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_downloads + 1)
+
+
+                                            + earliestcommit
+
+                        ,data = data_merge_has_download_one_year_valid_no_outlier)
+vif(model_download_one_year)
+summary(model_download_one_year)
+Anova(model_download_one_year)
+
+
+model_download_two_year = lm(log(download_others + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+
+                                            + log(dev_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_downloads + 1)
+
+
+                                            + earliestcommit
+
+                        ,data = data_merge_has_download_two_year_valid_no_outlier)
+vif(model_download_two_year)
+summary(model_download_two_year)
+Anova(model_download_two_year)
+
+
+
+
+model_download_three_year = lm(log(download_others + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+
+                                            + log(dev_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_downloads + 1)
+
+
+                                            + earliestcommit
+
+                        ,data = data_merge_has_download_three_year_valid_no_outlier)
+vif(model_download_three_year)
+summary(model_download_three_year)
+Anova(model_download_three_year)
+
+
+model_download_four_year = lm(log(download_others + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+
+                                            + log(dev_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_downloads + 1)
+
+
+                                            + earliestcommit
+
+                        ,data = data_merge_has_download_four_year_valid_no_outlier)
+vif(model_download_four_year)
+summary(model_download_four_year)
+Anova(model_download_four_year)
+
+model_download_five_year = lm(log(download_others + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+
+                                            + log(dev_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+                                            + log(time_to_accumulate_downloads + 1)
+
+
+                                            + earliestcommit
+
+                        ,data = data_merge_has_download_five_year_valid_no_outlier)
+vif(model_download_five_year)
+summary(model_download_five_year)
+Anova(model_download_five_year)
+
+
+model_dev_five_year = lm(log(dev_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                                            + log(star_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+
+                                            + earliestcommit
+
+                        ,data = data_merge_five_year_no_outlier)
+vif(model_dev_five_year)
+summary(model_dev_five_year)
+Anova(model_dev_five_year)
+
+
+
+model_dev_four_year = lm(log(dev_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                                            + log(star_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+
+                                            + earliestcommit
+
+                        ,data = data_merge_four_year_no_outlier)
+vif(model_dev_four_year)
+summary(model_dev_four_year)
+Anova(model_dev_four_year)
+
+
+
+model_dev_three_year = lm(log(dev_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                                            + log(star_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+
+                                            + earliestcommit
+
+                        ,data = data_merge_three_year_no_outlier)
+vif(model_dev_three_year)
+summary(model_dev_three_year)
+Anova(model_dev_three_year)
+
+
+
+model_dev_two_year = lm(log(dev_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                                            + log(star_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+
+                                            + earliestcommit
+
+                        ,data = data_merge_two_year_no_outlier)
+vif(model_dev_two_year)
+summary(model_dev_two_year)
+Anova(model_dev_two_year)
+
+model_dev_one_year = lm(log(dev_count + 1)~
+                                            + log(commit_count + 1)
+                                            + log(pk_count)
+
+                                            + log(star_count + 1)
+                                            + as.logical(org_flag)
+                                            + scale(mean_conventionality_woc)
+
+                                            + earliestcommit
+                        
+                        ,data = data_merge_one_year_no_outlier)
+
+
+vif(model_dev_one_year)
+summary(model_dev_one_year)
+Anova(model_dev_one_year)
+
+```
+
+### generate Table 3 in the paper
+```{r}
+library(stargazer)
+
+
+stargazer(model_star_five_year, model_download_five_year, model_dev_five_year, omit = c('Constant', 'earliestcommit'), digits = 2, omit.stat = c('ser', 'll', 'aic', 'bic'), single.row = TRUE, star.cutoffs = c(.05, .01, .001), star.char = c("*", "**", "***"),  covariate.labels = c('Commit count (log)', 'Package imported (log)', 'Developer count (log)', 'Star count (log)', 'Is owned by organization', 'Conventionality (scaled)', 'Time in GitHub', 'Time in PyPI'))
+
+
+
+
+```
+
+### generate Figure 5 in the paper
+```{r}
+
+data_visu = read_csv('./data/visualization_manual_model_coefficients_adjust_download_8.csv')
+data_visu <- data_visu %>%
+  mutate( Outcome=factor(Outcome,levels=c("developer", "stargazer", "download")) )
+
+
+line_width = 2
+ggplot(data_visu,aes(x=year, y=coefficient, group=Outcome, color=Outcome))+
+  geom_line(size = line_width) +
+    scale_colour_manual(values = c('developer' = "blue",'download' = "red", 'stargazer' = "orange"))+
+    scale_y_continuous(
+
+    # Features of the first axis
+    name = "Coefficient (developer, star)",
+
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~.*1.0 * 8, name="Coefficient (download)")
+  ) +
+  geom_errorbar(aes(ymin=lower, ymax=upper), width=.5, size = line_width,
+                 position=position_dodge(0.05)) +
+  geom_hline(yintercept=0, linetype = 'dashed', color = 'gray', size = 2) +
+  xlab('Period duration (in years)')+
+  theme_classic()+
+  theme(legend.text = element_text(size=28),
+        axis.text.x =element_text(size=32),
+        axis.text.y =element_text(size=28),
+        axis.title.x=element_text(size=28),
+        axis.title.y=element_text(size=28),
+        legend.title=element_text(size=28))
+
+ggsave(file="./figure/estimated_coefficient.pdf", width=20, height=12, dpi=300)
+
+```
+
+
+### survival analysis data process
+```{r}
+
+library(tidyverse)
+library(survival)
+library(regclass)
+library(car)
+
+
+data_project_outcome_sa = read_csv('./data/project_outcome_com_Python_year_censor_2022_year_before_2018.csv')
+
+data_pair_outcome_sa = read_csv('./data/project_atypical_combination_com_Python_year_censor_2022_year_before_2018_restrict_reshuffle_woc_pk_threshold_100.csv')
+data_star_sa = read_csv('./data/project_outcome_star_com_Python_year_censor_2022_year_before_2018.csv')
+data_merge_sa = merge(data_pair_outcome_sa, data_project_outcome_sa , by = 'woc')
+data_merge_sa = merge(data_merge_sa, data_star_sa, by = 'woc')
+data_merge_sa$earliestcommit = as.factor(data_merge_sa$earliest_commit_year)
+pk_threshold = 2
+
+data_merge_active = subset(data_merge_sa, recent_past_commit_count > 0 & identified_pk_count >= pk_threshold
+                                        & project_age < exp(9)
+                                        & project_age > exp(2)
+                                        & all_dev_alltime_count < exp(6)
+                                        & all_past_commit_count < exp(10)
+                                        & star_before_count < exp(9))
+
+hist(log(data_merge_sa$project_age+1))
+hist(log(data_merge_sa$all_dev_alltime_count+1))
+hist(log(data_merge_sa$all_past_commit_count+1))
+hist(log(data_merge_sa$star_before_count+1))
+data_merge_active$mean_conventionality = data_merge_active$mean_pair_pk_conventionality_woc
+
+
+```
+
+
+### survival analysis model
+```{r}
+
+suv_model <- coxph(Surv(survival_time, censor_status) ~  
+                                                        + log(all_past_commit_count + 1)
+                                                        + log(identified_pk_count + 1)
+                                                        + log(all_dev_alltime_count + 1)
+                                                        
+                                                        
+
+                                                        + log(star_before_count + 1)
+                                                        + as.logical(org_flag)
+                                                        + scale(mean_conventionality)
+                                                        + as.factor(earliest_commit_year)
+                      , data=data_merge_active)
+vif(suv_model)
+summary(suv_model)
+
+```
+
+### generate survival analysis table (Table 4 in the paper)
+```{r}
+library(stargazer)
+
+
+stargazer(suv_model, suv_model, digits = 2, omit = 'earliest_commit_year', omit.stat = c('ser', 'll', 'aic', 'bic'), single.row = TRUE, star.cutoffs = c(.05, .01, .001), star.char = c("*", "**", "***"), covariate.labels = c('Commit count (log)', 'Package imported (log)', 'Developer count(log)' , 'Star count (log)', 'Is owned by organization', 'Conventionality (scaled)'))
+
+
+
+
+```
